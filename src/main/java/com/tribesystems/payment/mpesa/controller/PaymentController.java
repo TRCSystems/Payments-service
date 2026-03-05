@@ -4,6 +4,7 @@ import com.tribesystems.payment.common.dto.ApiResponse;
 import com.tribesystems.payment.mpesa.dto.*;
 import com.tribesystems.payment.mpesa.service.MpesaService;
 import com.tribesystems.payment.transaction.model.ConfirmedTransaction;
+import com.tribesystems.payment.transaction.model.Payment;
 import com.tribesystems.payment.transaction.model.Transaction;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -122,11 +123,11 @@ public class PaymentController {
 
     @PostMapping(C2B_VALIDATION)
     @Operation(summary = "validate c2b transactions", description = "validate c2b transactions")
-    public void c2bTransactionValidation(@RequestBody TransactionCallbackRequest req)
+    public ValidateC2BPaymentResponse c2bTransactionValidation(@RequestBody TransactionCallbackRequest req)
     {
         logger.info("========================== Received a C2B transaction validation request ======================");
         logger.info("Validating transaction: {}", req);
-        mpesaService.transactionValidationCallback(req);
+        return mpesaService.transactionValidationCallback(req);
     }
 
     @PostMapping(C2B_CONFIRMATION)
@@ -144,5 +145,39 @@ public class PaymentController {
     {
         logger.info("========================== Fetching all C2B transactions ======================");
         return mpesaService.getAllC2BTransactions();
+    }
+
+
+    @PostMapping(B2C_INITIATE_PAYMENT)
+    @Operation(summary = "initiate b2c payment", description = "initiate b2c payment for merchant")
+    public ApiResponse<B2CResponse> b2cInitiatePayment(@RequestBody InitiatePaymentDto dto)
+    {
+        logger.info("========================== Received a B2C payment initiation request ======================");
+        logger.info("Payment initiation request: {}", dto);
+        return mpesaService.initiateB2Cpayment(dto);
+    }
+
+    @GetMapping(B2C_GET_ALL_PAYMENTS)
+    @Operation(summary = "get all payments", description = "retrieve all B2C payments")
+    public ApiResponse<List<Payment>> b2cGetAllPayments()
+    {
+        logger.info("========================== Fetching all B2C payments ======================");
+        return mpesaService.getAllB2CPayments();
+    }
+
+    @PostMapping(B2C_CALLBACK_RESULT)
+    @Operation(summary = "Receive B2C callback result", description = "Receive and process B2C Callback result")
+    public void b2cCallbackResult(@RequestBody B2CCallbackResult result)
+    {
+        logger.info("========================== Received B2C Callback Result ======================");
+        mpesaService.processB2CCallbackResult(result);
+    }
+
+    @PostMapping(B2C_CALLBACK_TIMEOUT)
+    @Operation(summary = "Receive B2C callback timeout", description = "Receive and process B2C Callback result")
+    public void b2cCallbackTimeout(@RequestBody B2CCallbackResult result)
+    {
+        logger.info("========================== Received B2C Callback Timeout ======================");
+        mpesaService.processB2CCallbackTimeout(result);
     }
 }

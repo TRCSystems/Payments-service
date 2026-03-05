@@ -6,9 +6,11 @@ import com.tribesystems.payment.mpesa.dto.*;
 import com.tribesystems.payment.common.utils.DateTimeUtil;
 import com.tribesystems.payment.transaction.mapper.TransactionMapper;
 import com.tribesystems.payment.transaction.model.ConfirmedTransaction;
+import com.tribesystems.payment.transaction.model.Payment;
 import com.tribesystems.payment.transaction.model.RegisterC2BCallbacksModel;
 import com.tribesystems.payment.transaction.model.Transaction;
 import com.tribesystems.payment.transaction.repository.ConfirmedTransactionRepository;
+import com.tribesystems.payment.transaction.repository.PaymentRepository;
 import com.tribesystems.payment.transaction.repository.RegisterC2BCallbacksRepository;
 import com.tribesystems.payment.transaction.repository.TransactionRepository;
 import okhttp3.*;
@@ -19,10 +21,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.math.BigInteger;
-import java.util.ArrayList;
-import java.util.Base64;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 
 @Service
 public class MpesaService {
@@ -47,8 +46,8 @@ public class MpesaService {
     private String passkey;
     @Value("${mpesa.shortcode}")
     private String shortCode;
-    @Value("${mpesa.c-to-b-shortcode}")
-    private String c2bShortCode;
+    @Value("${mpesa.org-shortcode}")
+    private String orgShortCode;
     @Value("${mpesa.till-number}")
     private String tillNumber;
     @Value("${mpesa.callback-url}")
@@ -69,6 +68,16 @@ public class MpesaService {
     @Value("${mpesa.c2b-confirmation-callback}")
     private String c2bConfirmationCallbackUrl;
 
+    @Value("${mpesa.b-to-c-url}")
+    private String b2cUrl;
+    @Value("${mpesa.b-to-c-api-username}")
+    private String b2cApiUsername;
+
+    @Value("${mpesa.b2c-result-callback}")
+    private String b2cResultCallbackUrl;
+    @Value("${mpesa.b2c-timeout-callback}")
+    private String b2cTimeoutCallbackUrl;
+
     @Autowired
     private OkHttpClient client;
 
@@ -84,7 +93,12 @@ public class MpesaService {
     @Autowired
     private ConfirmedTransactionRepository confirmedTransactionRepository;
 
+    @Autowired
+    private PaymentRepository paymentRepository;
+
     private final Logger logger = LoggerFactory.getLogger(MpesaService.class);
+
+    private String generateUniqueueId(){return UUID.randomUUID().toString();}
 
     public ApiResponse<AuthenticateAppResponse> authenticateWithMpesa()
     {
@@ -323,7 +337,7 @@ public class MpesaService {
     {
         try{
             RegisterC2BUrlsRequest registerReq = new RegisterC2BUrlsRequest(
-                    c2bShortCode,
+                    orgShortCode,
                     "Completed",
                     c2bConfirmationCallbackUrl,
                     c2bValidationCallbackUrl
@@ -467,7 +481,7 @@ public class MpesaService {
         }
     }
 
-    public void transactionValidationCallback(TransactionCallbackRequest request)
+    public ValidateC2BPaymentResponse transactionValidationCallback(TransactionCallbackRequest request)
     {
         try{
             logger.info("========================================== Received a transaction for validation ==========================================");
@@ -481,6 +495,7 @@ public class MpesaService {
             logger.error("Failed to validate transaction!");
             logger.error("Reason: {}", e.getMessage());
         }
+        return new ValidateC2BPaymentResponse("0","Accepted");
     }
 
     public void transactionConfirmationCallback(TransactionCallbackRequest request)
@@ -551,6 +566,149 @@ public class MpesaService {
                     "failed",
                     new ArrayList<>()
             );
+        }
+    }
+
+    public ApiResponse<B2CResponse> initiateB2Cpayment(InitiatePaymentDto dto)
+    {
+        try{
+
+            B2CRequest req = new B2CRequest(
+                    generateUniqueueId(),
+                    b2cApiUsername,
+                    securityCredential,
+                    "BusinessPayment", //"SalaryPayment",
+                    "" + dto.amount(),
+                    orgShortCode,
+                    dto.phoneNumber(),//254705912645
+                    "Payment Due",
+                    b2cTimeoutCallbackUrl,
+                    b2cResultCallbackUrl,
+                    "Occassion For Payment"
+            );
+            String token = authenticateWithMpesa().data().access_token();
+            logger.info("Sending Request: {}", req);
+
+            RequestBody reqBody = RequestBody.create(
+                    gson.toJson(req), MediaType.parse("application/json")
+            );
+
+            logger.info("=======================================Request Body=======================================");
+            logger.info("{}", reqBody.toString());
+            logger.info("Invoking Url: {}", b2cUrl);
+            Request request = new Request.Builder()
+                    .url(b2cUrl)
+                    .addHeader("Authorization", "Bearer " + token)
+                    .addHeader("Content-Type", "application/json")
+                    .post(reqBody)
+                    .build();
+
+            logger.info("Request body created successfully");
+            Response response = client.newCall(request).execute();
+            logger.info("Initiating B2C Payment Successful");
+            logger.info("Received Code: {}", response.code());
+            logger.info("Received Message: {}", response.message());
+
+            if(response.isSuccessful() && response.body() != null)
+            {
+                String bodyStr = response.body().string();
+                logger.info("Response Body: {}", bodyStr);
+                B2CResponse simResp = gson.fromJson(bodyStr, B2CResponse.class);
+                logger.info("======================== Initiate B2C Payment Successful ========================");
+                logger.info("{}", simResp);
+                logger.info("======================================== Creating new payment object ========================================");
+                Payment pmt = TransactionMapper.b2cRequestToPaymentMapper(req, "PENDING");
+                logger.info("======================================== After Creating new payment object ========================================");
+
+                logger.info("======================================== saving the new payment ========================================");
+                paymentRepository.save(pmt);
+                logger.info("======================================== after saving the new payment ========================================");
+
+                return new ApiResponse<>(
+                        200,
+                        "success",
+                        simResp
+                );
+            }
+            else{
+                logger.info("Failed to initiate B2C Payment");
+                String bodyStr = response.body().string();
+                logger.info("Response Body: {}", bodyStr);
+                return new ApiResponse<>(
+                        500,
+                        "failed",
+                        null
+                );
+            }
+        }catch (Exception e)
+        {
+            logger.error("Failed to initiate B2C Payment");
+            logger.info("{}", e.getMessage());
+            return new ApiResponse<>(
+                    500,
+                    "failed",
+                    null
+            );
+        }
+    }
+
+    public ApiResponse<List<Payment>> getAllB2CPayments()
+    {
+        try{
+            return new ApiResponse<>(
+                    200,
+                    "success",
+                    paymentRepository.findAll()
+            );
+        }
+        catch (Exception e)
+        {
+            logger.error("Failed to fetch all B2C Payments");
+            logger.error("reason: {}", e.getMessage());
+            return new ApiResponse<>(
+                    500,
+                    "failed",
+                    new ArrayList<>()
+            );
+        }
+    }
+
+    public void processB2CCallbackResult(B2CCallbackResult result)
+    {
+        try{
+            String id = result.Result().OriginatorConversationID();
+           Optional<Payment> pmt = paymentRepository.findPaymentByPaymentOriginatorConversationID(id);
+
+           if(pmt.isEmpty())
+           {
+               logger.info("No payment with specified id exists");
+               logger.info("Payment: {}", result);
+           }
+           else{
+               logger.info("Payment with specified ID has been found");
+               logger.info("Payment: {}", pmt);
+               Payment payment = pmt.get();
+               payment.setPaymentStatus("COMPLETED");
+               paymentRepository.save(payment);
+           }
+        }
+        catch (Exception e)
+        {
+            logger.error("Failed to process B2C Callback result");
+            logger.error("reason: {}", e.getMessage());
+        }
+    }
+
+    public void processB2CCallbackTimeout(B2CCallbackResult result)
+    {
+        try{
+            logger.error("Payment processing timed out!");
+            logger.error("Result: {}", result);
+        }
+        catch (Exception e)
+        {
+            logger.error("Failed to process B2C Callback timeout");
+            logger.error("reason: {}", e.getMessage());
         }
     }
 }

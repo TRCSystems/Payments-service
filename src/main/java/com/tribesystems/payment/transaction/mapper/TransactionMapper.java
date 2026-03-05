@@ -1,10 +1,12 @@
 package com.tribesystems.payment.transaction.mapper;
 
+import com.tribesystems.payment.mpesa.dto.B2CRequest;
 import com.tribesystems.payment.mpesa.dto.InitiatePaymentDto;
 import com.tribesystems.payment.mpesa.dto.InitiatePaymentResponse;
 import com.tribesystems.payment.mpesa.dto.TransactionCallbackRequest;
 import com.tribesystems.payment.transaction.enums.TransactionType;
 import com.tribesystems.payment.transaction.model.ConfirmedTransaction;
+import com.tribesystems.payment.transaction.model.Payment;
 import com.tribesystems.payment.transaction.model.Transaction;
 import jakarta.persistence.Column;
 
@@ -41,6 +43,20 @@ public class TransactionMapper {
                 .mpesaTransactionFirstName(request.FirstName())
                 .mpesaTransactionMiddleName(request.MiddleName())
                 .mpesaTransactionLastName(request.LastName())
+                .build();
+    }
+
+    public static Payment b2cRequestToPaymentMapper(B2CRequest request, String paymentStatus)
+    {
+        return Payment.builder()
+                .paymentOriginatorConversationID(request.OriginatorConversationID())
+                .paymentInitiatorName(request.InitiatorName())
+                .paymentAmount(request.Amount())
+                .paymentPartyA(request.PartyA())
+                .paymentPartyB(request.PartyB())
+                .paymentRemarks(request.Remarks())
+                .paymentOccassion(request.Occassion())
+                .paymentStatus(paymentStatus)
                 .build();
     }
 }
