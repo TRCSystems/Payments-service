@@ -2,13 +2,17 @@ package com.tribesystems.payment.transaction.model;
 
 import com.tribesystems.payment.common.model.BaseEntity;
 import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 @Entity
 @Table(name = "payment")
 @Builder
 @Data
+@AllArgsConstructor
+@NoArgsConstructor
 public class Payment extends BaseEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
