@@ -5,14 +5,8 @@ import com.tribesystems.payment.common.dto.ApiResponse;
 import com.tribesystems.payment.mpesa.dto.*;
 import com.tribesystems.payment.common.utils.DateTimeUtil;
 import com.tribesystems.payment.transaction.mapper.TransactionMapper;
-import com.tribesystems.payment.transaction.model.ConfirmedTransaction;
-import com.tribesystems.payment.transaction.model.Payment;
-import com.tribesystems.payment.transaction.model.RegisterC2BCallbacksModel;
-import com.tribesystems.payment.transaction.model.Transaction;
-import com.tribesystems.payment.transaction.repository.ConfirmedTransactionRepository;
-import com.tribesystems.payment.transaction.repository.PaymentRepository;
-import com.tribesystems.payment.transaction.repository.RegisterC2BCallbacksRepository;
-import com.tribesystems.payment.transaction.repository.TransactionRepository;
+import com.tribesystems.payment.transaction.model.*;
+import com.tribesystems.payment.transaction.repository.*;
 import okhttp3.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -78,6 +72,13 @@ public class MpesaService {
     @Value("${mpesa.b2c-timeout-callback}")
     private String b2cTimeoutCallbackUrl;
 
+    @Value("${mpesa.b-to-b-url}")
+    private String b2bUrl;
+    @Value("${mpesa.b2b-callback-url}")
+    private String b2bCallbackUrl;
+    @Value("${mpesa.b2b-merchant-name}")
+    private String b2bMerchantName;
+
     @Autowired
     private OkHttpClient client;
 
@@ -95,6 +96,9 @@ public class MpesaService {
 
     @Autowired
     private PaymentRepository paymentRepository;
+
+    @Autowired
+    private B2BTransactionRepository b2BTransactionRepository;
 
     private final Logger logger = LoggerFactory.getLogger(MpesaService.class);
 
@@ -709,6 +713,120 @@ public class MpesaService {
         {
             logger.error("Failed to process B2C Callback timeout");
             logger.error("reason: {}", e.getMessage());
+        }
+    }
+
+    public ApiResponse<B2BTransactionResponse> initiateB2Bpayment(InitiateB2BTransactionDto dto)
+    {
+        try{
+
+            B2BTransactionRequest req = new B2BTransactionRequest(
+                    dto.shortCode(),//"7318002",
+                    orgShortCode,//"174379",
+                    dto.amount(),
+                    dto.paymentReference(),
+                    b2bCallbackUrl,
+                    b2bMerchantName,
+                    UUID.randomUUID().toString()
+            );
+
+            String token = authenticateWithMpesa().data().access_token();
+            logger.info("Sending Request: {}", req);
+
+            RequestBody reqBody = RequestBody.create(
+                    gson.toJson(req), MediaType.parse("application/json")
+            );
+
+            logger.info("=======================================Request Body=======================================");
+            logger.info("{}", reqBody.toString());
+            logger.info("Invoking Url: {}", b2bUrl);
+            Request request = new Request.Builder()
+                    .url(b2bUrl)
+                    .addHeader("Authorization", "Bearer " + token)
+                    .addHeader("Content-Type", "application/json")
+                    .post(reqBody)
+                    .build();
+
+            logger.info("Request body created successfully");
+            Response response = client.newCall(request).execute();
+            logger.info("Initiating B2B Payment Successful");
+            logger.info("Received Code: {}", response.code());
+            logger.info("Received Message: {}", response.message());
+
+            if(response.isSuccessful() && response.body() != null)
+            {
+                String bodyStr = response.body().string();
+                logger.info("Response Body: {}", bodyStr);
+                B2BTransactionResponse b2bResp = gson.fromJson(bodyStr, B2BTransactionResponse.class);
+                logger.info("======================== Initiate B2B Payment Successful ========================");
+                logger.info("{}", b2bResp);
+                logger.info("======================================== Creating new B2B Transaction object ========================================");
+                B2BTransaction txn = TransactionMapper.b2bTransactionRequestToB2BTransactionMapper(req, "PENDING");
+                txn.setMpesaTransactionId(b2bResp.transactionId());
+                logger.info("======================================== After Creating new B2B Transaction object ========================================");
+
+                logger.info("======================================== saving the new B2B Transaction ========================================");
+                b2BTransactionRepository.save(txn);
+                logger.info("======================================== after saving the new B2B Transaction ========================================");
+
+                return new ApiResponse<>(
+                        200,
+                        "success",
+                        b2bResp
+                );
+            }
+            else{
+                logger.info("Failed to initiate B2B Payment");
+                String bodyStr = response.body().string();
+                logger.info("Response Body: {}", bodyStr);
+                return new ApiResponse<>(
+                        500,
+                        "failed",
+                        null
+                );
+            }
+        }catch (Exception e)
+        {
+            logger.error("Failed to initiate B2B Payment");
+            logger.info("{}", e.getMessage());
+            return new ApiResponse<>(
+                    500,
+                    "failed",
+                    null
+            );
+        }
+    }
+
+    public void processB2BTransactionCallbackRequest(B2BTransactionCallbackRequest request)
+    {
+        try{
+            logger.info("Processing B2B transaction callback request");
+            logger.info("Request: {}", request);
+        } catch (Exception e) {
+            logger.error("Failed to process B2B Transaction");
+            logger.error("Error: {}", e.getMessage());
+        }
+    }
+
+    public ApiResponse<List<B2BTransaction>> getAllB2BTransactions()
+    {
+        try{
+            logger.info("Fetching all B2B transactions");
+            List<B2BTransaction> transactions = b2BTransactionRepository.findAll();
+
+            return new ApiResponse<>(
+                    200,
+                    "success",
+                    transactions
+            );
+        } catch (Exception e) {
+            logger.error("Failed to fetch all B2B Transactions");
+            logger.error("Error: {}", e.getMessage());
+            return new ApiResponse<>(
+                    500,
+                    "failed",
+                    new ArrayList<>()
+            );
         }
     }
 }

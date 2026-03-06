@@ -23,4 +23,9 @@ public class MpesaConstants {
     public static final String B2C_CALLBACK_RESULT = "/b2c/result";
     public static final String B2C_CALLBACK_TIMEOUT = "/b2c/timeout";
 
+
+    public static final String B2B_INITIATE_PAYMENT = "/b2b/initiate";
+    public static final String B2B_PAYMENT_REQUEST_CALLBACK = "/b2b/callback";
+    public static final String B2B_GET_ALL_TRANSACTIONS = "/b2b/all";
+
 }

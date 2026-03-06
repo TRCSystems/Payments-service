@@ -3,6 +3,7 @@ package com.tribesystems.payment.mpesa.controller;
 import com.tribesystems.payment.common.dto.ApiResponse;
 import com.tribesystems.payment.mpesa.dto.*;
 import com.tribesystems.payment.mpesa.service.MpesaService;
+import com.tribesystems.payment.transaction.model.B2BTransaction;
 import com.tribesystems.payment.transaction.model.ConfirmedTransaction;
 import com.tribesystems.payment.transaction.model.Payment;
 import com.tribesystems.payment.transaction.model.Transaction;
@@ -179,5 +180,29 @@ public class PaymentController {
     {
         logger.info("========================== Received B2C Callback Timeout ======================");
         mpesaService.processB2CCallbackTimeout(result);
+    }
+
+    @PostMapping(B2B_INITIATE_PAYMENT)
+    @Operation(summary = "Initiate B2B payment request", description = "Initiate B2B payment request")
+    public ApiResponse<B2BTransactionResponse> b2cCallbackTimeout(@RequestBody InitiateB2BTransactionDto dto)
+    {
+        logger.info("========================== Initiating B2B Payment ======================");
+        return mpesaService.initiateB2Bpayment(dto);
+    }
+
+    @PostMapping(B2B_PAYMENT_REQUEST_CALLBACK)
+    @Operation(summary = "Process B2B transaction responses from daraja", description = "Process B2B transaction responses from daraja")
+    public void b2bCallback(@RequestBody B2BTransactionCallbackRequest response)
+    {
+        logger.info("========================== Processing B2B Transaction Response ======================");
+        mpesaService.processB2BTransactionCallbackRequest(response);
+    }
+
+    @GetMapping(B2B_GET_ALL_TRANSACTIONS)
+    @Operation(summary = "Fetch All B2B transactions", description = "Fetch all B2B transactions")
+    public ApiResponse<List<B2BTransaction>> getAllB2BTransactions()
+    {
+        logger.info("========================== Processing B2B Transaction Response ======================");
+        return mpesaService.getAllB2BTransactions();
     }
 }
