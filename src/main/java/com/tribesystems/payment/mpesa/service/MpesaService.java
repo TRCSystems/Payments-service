@@ -384,10 +384,31 @@ public class MpesaService {
                     logger.info("=========================================successfully saved transaction=========================================");
 //                }
 
+                /*
+                * Safaricom's live stkPushQuery response never carries a receipt number - only the async callback
+                * does. Re-read the transaction (the callback may have landed concurrently, during this same
+                * round trip) and use its receipt instead, so a caller never sees a successful ResultCode with a
+                * null receipt just because the callback happened to be a moment slower than this live query.
+                * */
+                String mpesaReceipt = transactionRepository.findByPaymentReference(checkStkPushStatusRequest.paymentReference())
+                        .map(Transaction::getMpesaReceiptNumber)
+                        .filter(r -> r != null && !r.isBlank())
+                        .orElse(checkStkResp.MpesaReceipt());
+
+                CheckSTKPushStatusResponse merged = new CheckSTKPushStatusResponse(
+                        checkStkResp.ResponseCode(),
+                        checkStkResp.ResponseDescription(),
+                        mpesaReceipt,
+                        checkStkResp.MerchantRequestID(),
+                        checkStkResp.CheckoutRequestID(),
+                        checkStkResp.ResultCode(),
+                        checkStkResp.ResultDesc()
+                );
+
                 return new ApiResponse<>(
                         200,
                         "success",
-                        checkStkResp
+                        merged
                 );
             }
             else{
